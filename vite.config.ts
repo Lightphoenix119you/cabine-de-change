@@ -13,4 +13,8 @@ export default defineConfig({
   optimizeDeps: {
     exclude: ['lucide-react'],
   },
+  define: {
+    'import.meta.env.VITE_SUPABASE_URL': JSON.stringify('https://hawzdugmpskkuvtxglmv.supabase.co'),
+    'import.meta.env.VITE_SUPABASE_ANON_KEY': JSON.stringify('VOTRE_CLE_ANON_COMPLETE'),
+  },
 });
