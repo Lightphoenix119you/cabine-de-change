@@ -160,7 +160,7 @@ export default function App() {
         <div className="w-full max-w-sm space-y-3 rounded-2xl border-2 border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950 p-5">
           <p className="text-sm font-bold text-red-700 dark:text-red-400">Erreur de chargement</p>
 
-          <p className="rounded-lg bg-white dark:bg-stone-900 p-3 font-mono text-xs leading-relaxed text-red-600 dark:text-red-400 break-words">
+          <p className="rounded-lg bg-white dark:bg-stone-900 p-3 text-red-500 dark:text-red-400 font-mono text-sm break-words">
             {error}
           </p>
 
