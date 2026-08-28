@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, lazy, Suspense } from 'react';
 import { Loader2 } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { supabase, supabaseEnvStatus } from '@/lib/supabase';
+import { getCabins } from '@/services/apiCabins';
 import type { Cabin, Vendor, VendorProduct } from '@/types';
 import type { Session } from '@supabase/supabase-js';
 import { CabinHeader } from '@/components/CabinHeader';
@@ -34,17 +35,13 @@ export default function App() {
   const { coords: userCoords, loading: geoLoading } = useGeolocation();
 
   const loadCabin = useCallback(async () => {
-    const { data, error } = await supabase
-      .from('cabins')
-      .select('*')
-      .order('created_at')
-      .limit(1)
-      .maybeSingle();
-    if (error) {
-      setError('Impossible de charger les données de la cabine.');
+    try {
+      const cabins = await getCabins();
+      return cabins[0] ?? null;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erreur inconnue lors du chargement de la cabine.');
       return null;
     }
-    return data as Cabin | null;
   }, []);
 
   const loadVendors = useCallback(async (cabinId: string) => {
@@ -160,11 +157,30 @@ export default function App() {
   if (error) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-stone-50 dark:bg-stone-950 p-6 transition-colors">
-        <div className="text-center space-y-2">
-          <p className="text-stone-700 dark:text-stone-200 font-semibold">{error}</p>
+        <div className="w-full max-w-sm space-y-3 rounded-2xl border-2 border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950 p-5">
+          <p className="text-sm font-bold text-red-700 dark:text-red-400">Erreur de chargement</p>
+
+          <p className="rounded-lg bg-white dark:bg-stone-900 p-3 text-red-500 dark:text-red-400 font-mono text-sm break-words">
+            {error}
+          </p>
+
+          {(!supabaseEnvStatus.url || !supabaseEnvStatus.anonKey) && (
+            <div className="rounded-lg bg-red-100 dark:bg-red-900 p-3 text-xs text-red-800 dark:text-red-300">
+              <p className="font-semibold">Variable(s) d'environnement manquante(s) :</p>
+              <ul className="mt-1 list-disc pl-4 space-y-0.5">
+                {!supabaseEnvStatus.url && <li className="font-mono">VITE_SUPABASE_URL</li>}
+                {!supabaseEnvStatus.anonKey && <li className="font-mono">VITE_SUPABASE_ANON_KEY</li>}
+              </ul>
+              <p className="mt-2">
+                Sur Vercel : Project Settings → Environment Variables, puis redéployez — un ajout de
+                variable ne s'applique pas au déploiement déjà en ligne.
+              </p>
+            </div>
+          )}
+
           <button
             onClick={refreshAll}
-            className="text-sm text-amber-600 dark:text-amber-400 font-medium"
+            className="w-full rounded-lg bg-red-600 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-red-700 active:scale-[0.98]"
           >
             Réessayer
           </button>
