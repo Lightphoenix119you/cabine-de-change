@@ -1,0 +1,47 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light dark;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Leaflet popup theming */
+.leaflet-container {
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+.leaflet-popup-content-wrapper {
+  border-radius: 0.75rem;
+}
+
+.dark .leaflet-popup-content-wrapper,
+.dark .leaflet-popup-tip {
+  background: #1e293b;
+  color: #e2e8f0;
+}
+
+.dark .leaflet-tile {
+  filter: brightness(0.7) invert(0.9) contrast(0.9) hue-rotate(180deg) saturate(0.8);
+}
+
+/* Hide scrollbar for horizontal chip rows */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
