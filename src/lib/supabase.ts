@@ -1,29 +1,20 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
-const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+const url = import.meta.env.VITE_SUPABASE_URL;
+const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-if (!url) {
+let client: SupabaseClient | null = null;
+
+if (!url || !anonKey) {
   console.error(
-    "[Supabase] VITE_SUPABASE_URL est undefined. En local : vérifiez le fichier .env. Sur Vercel : Project Settings → Environment Variables, puis redéployez (les variables ne sont pas reprises automatiquement d'un déploiement à l'autre)."
+    '[Cabine de Change] Missing Supabase configuration. ' +
+      'Ensure VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are defined in your .env file.'
   );
-}
-if (!anonKey) {
-  console.error(
-    "[Supabase] VITE_SUPABASE_ANON_KEY est undefined. Même vérification : .env en local, Environment Variables sur Vercel, puis redéployez."
-  );
-}
-if (url && anonKey) {
-  console.log('[Supabase] Client initialisé — URL et clé anon détectées.');
+} else {
+  client = createClient(url, anonKey, {
+    auth: { persistSession: true, autoRefreshToken: true },
+  });
 }
 
-// Exposed so the UI can show a precise diagnostic on screen (useful on
-// mobile, where the console isn't reachable) instead of a generic error.
-export const supabaseEnvStatus = {
-  url: Boolean(url),
-  anonKey: Boolean(anonKey),
-};
-
-export const supabase = createClient(url ?? '', anonKey ?? '', {
-  auth: { persistSession: true },
-});
+export const supabase = client;
+export const isSupabaseConfigured = Boolean(client);

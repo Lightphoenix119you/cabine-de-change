@@ -1,304 +1,258 @@
-import { useEffect, useState, useCallback, lazy, Suspense } from 'react';
-import { Loader2 } from 'lucide-react';
-import { supabase, supabaseEnvStatus } from '@/lib/supabase';
-import { getCabins } from '@/services/apiCabins';
-import type { Cabin, Vendor, VendorProduct } from '@/types';
-import type { Session } from '@supabase/supabase-js';
-import { CabinHeader } from '@/components/CabinHeader';
-import { RateBanner } from '@/components/RateBanner';
-import { Converter } from '@/components/Converter';
-import { VendorsSection } from '@/components/VendorsSection';
-import { AdminModal } from '@/components/AdminModal';
-import { FirstRunSetup } from '@/components/FirstRunSetup';
-import { VendorProfileModal } from '@/components/VendorProfileModal';
-import { ClientChatModal } from '@/components/ClientChatModal';
-import { BottomNav, type Screen } from '@/components/BottomNav';
-import { useGeolocation } from '@/hooks/useGeolocation';
-import { distanceInMeters } from '@/lib/geo';
+import { useMemo, useState } from 'react';
+import { AlertCircle, Building2, Megaphone, TrendingDown, TrendingUp } from 'lucide-react';
+import { ThemeProvider } from '@/context/ThemeContext';
+import { isSupabaseConfigured } from '@/lib/supabase';
+import { useBureaus, useGeolocation } from '@/hooks/useBureaus';
+import { useAllLocalVendors } from '@/hooks/useLocalVendors';
+import { useAuth } from '@/hooks/useAuth';
+import { formatCDF } from '@/lib/format';
+import { Header } from '@/components/Header';
+import { BottomNav, type Tab } from '@/components/BottomNav';
+import { StatCard } from '@/components/StatCard';
+import { EmptyState } from '@/components/EmptyState';
+import { CurrencyConverter } from '@/components/CurrencyConverter';
+import { RatesDashboard } from '@/components/RatesDashboard';
+import { BureauDirectory } from '@/components/BureauDirectory';
+import { CommunityReportModal } from '@/components/CommunityReportModal';
+import { AuthModal } from '@/components/AuthModal';
+import { AccountPanel } from '@/components/AccountPanel';
+import { BureauProfile } from '@/components/BureauProfile';
+import type { BureauWithRate } from '@/lib/types';
 
-const MapView = lazy(() => import('@/components/MapView').then((m) => ({ default: m.MapView })));
+function AppContent() {
+  const [tab, setTab] = useState<Tab>('accueil');
+  const [reportOpen, setReportOpen] = useState(false);
+  const [authOpen, setAuthOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [selectedBureau, setSelectedBureau] = useState<BureauWithRate | null>(null);
 
-export default function App() {
-  const [cabin, setCabin] = useState<Cabin | null>(null);
-  const [vendors, setVendors] = useState<Vendor[]>([]);
-  const [vendorProducts, setVendorProducts] = useState<VendorProduct[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [adminOpen, setAdminOpen] = useState(false);
-  const [selectedVendorId, setSelectedVendorId] = useState<string | null>(null);
-  const [cabinChatOpen, setCabinChatOpen] = useState(false);
-  const [hasUnread, setHasUnread] = useState(false);
-  const [screen, setScreen] = useState<Screen>('home');
-  const [session, setSession] = useState<Session | null>(null);
-  const [checkedAuth, setCheckedAuth] = useState(false);
+  const auth = useAuth();
+  const { coords, status: geoStatus, request: requestGeo } = useGeolocation();
+  const { bureaus, loading, error, refetch } = useBureaus({
+    userLat: coords?.lat,
+    userLng: coords?.lng,
+  });
+  const { vendors: allVendors } = useAllLocalVendors();
 
-  const { coords: userCoords, loading: geoLoading } = useGeolocation();
+  const ownedBureaus = useMemo(
+    () => bureaus.filter((b) => auth.ownedBureauIds.includes(b.id)),
+    [bureaus, auth.ownedBureauIds]
+  );
 
-  const loadCabin = useCallback(async () => {
-    try {
-      const cabins = await getCabins();
-      return cabins[0] ?? null;
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erreur inconnue lors du chargement de la cabine.');
-      return null;
-    }
-  }, []);
+  const stats = useMemo(() => {
+    const verifiedBureaus = bureaus.filter((b) => b.verified);
+    const ratesWithSell = bureaus
+      .filter((b) => b.latest?.status === 'verified' && b.latest.usd_sell != null)
+      .map((b) => b.latest!.usd_sell as number);
+    const ratesWithBuy = bureaus
+      .filter((b) => b.latest?.status === 'verified' && b.latest.usd_buy != null)
+      .map((b) => b.latest!.usd_buy as number);
 
-  const loadVendors = useCallback(async (cabinId: string) => {
-    const { data, error } = await supabase
-      .from('vendors')
-      .select('*')
-      .eq('cabin_id', cabinId)
-      .order('created_at');
-    if (error) return [];
-    return (data ?? []) as Vendor[];
-  }, []);
+    const avgSell = ratesWithSell.length
+      ? ratesWithSell.reduce((a, b) => a + b, 0) / ratesWithSell.length
+      : null;
+    const avgBuy = ratesWithBuy.length
+      ? ratesWithBuy.reduce((a, b) => a + b, 0) / ratesWithBuy.length
+      : null;
 
-  const loadVendorProducts = useCallback(async (vendorIds: string[]) => {
-    if (vendorIds.length === 0) return [];
-    const { data, error } = await supabase
-      .from('vendor_products')
-      .select('*')
-      .in('vendor_id', vendorIds)
-      .order('created_at');
-    if (error) return [];
-    return (data ?? []) as VendorProduct[];
-  }, []);
-
-  const checkUnread = useCallback(async (cabinId: string, operatorId: string | null, uid: string | undefined) => {
-    if (!uid || !operatorId || uid !== operatorId) {
-      setHasUnread(false);
-      return;
-    }
-    const { data } = await supabase
-      .from('conversations')
-      .select('last_message_at, operator_last_read_at')
-      .eq('cabin_id', cabinId);
-    const unread = (data ?? []).some(
-      (c) =>
-        c.last_message_at &&
-        (!c.operator_last_read_at || new Date(c.last_message_at) > new Date(c.operator_last_read_at))
-    );
-    setHasUnread(unread);
-  }, []);
-
-  const refreshAll = useCallback(async () => {
-    const c = await loadCabin();
-    if (c) {
-      setCabin(c);
-      const v = await loadVendors(c.id);
-      setVendors(v);
-      setVendorProducts(await loadVendorProducts(v.map((x) => x.id)));
-      const { data } = await supabase.auth.getSession();
-      checkUnread(c.id, c.operator_id, data.session?.user.id);
-    }
-  }, [loadCabin, loadVendors, loadVendorProducts, checkUnread]);
-
-  useEffect(() => {
-    (async () => {
-      setLoading(true);
-      const c = await loadCabin();
-      if (c) {
-        setCabin(c);
-        const v = await loadVendors(c.id);
-        setVendors(v);
-        setVendorProducts(await loadVendorProducts(v.map((x) => x.id)));
-        const { data } = await supabase.auth.getSession();
-        checkUnread(c.id, c.operator_id, data.session?.user.id);
-      }
-      setLoading(false);
-    })();
-  }, [loadCabin, loadVendors, loadVendorProducts, checkUnread]);
-
-  useEffect(() => {
-    if (!cabin) return;
-    const channel = supabase
-      .channel(`conversations-badge-${cabin.id}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'conversations', filter: `cabin_id=eq.${cabin.id}` },
-        () => checkUnread(cabin.id, cabin.operator_id, session?.user.id)
-      )
-      .subscribe();
-    return () => {
-      supabase.removeChannel(channel);
+    return {
+      totalBureaus: bureaus.length,
+      verifiedCount: verifiedBureaus.length,
+      avgBuy,
+      avgSell,
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cabin?.id, session?.user.id]);
+  }, [bureaus]);
 
-  // Central auth listener: tracks the operator's session app-wide, and
-  // catches sign-ins completed via redirect (email confirmation link,
-  // OAuth callback) so the operator lands straight in their dashboard
-  // instead of the public storefront with no sign anything happened.
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session?.user.is_anonymous ? null : data.session);
-      setCheckedAuth(true);
-    });
-    const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
-      const nonAnonSession = s?.user.is_anonymous ? null : s;
-      setSession(nonAnonSession);
-      if (event === 'SIGNED_IN' && nonAnonSession && cabin && nonAnonSession.user.id === cabin.operator_id) {
-        setAdminOpen(true);
-      }
-    });
-    return () => sub.subscription.unsubscribe();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cabin?.operator_id]);
+  const handleTabChange = (newTab: Tab) => {
+    if (newTab === 'signaler') {
+      setReportOpen(true);
+    } else {
+      setTab(newTab);
+    }
+  };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-stone-50 dark:bg-stone-950 transition-colors">
-        <Loader2 className="animate-spin text-amber-500" size={32} />
-      </div>
-    );
+  function handleAccountClick() {
+    if (auth.session) {
+      setAccountOpen(true);
+    } else {
+      setAuthOpen(true);
+    }
   }
 
-  if (error) {
+  function handleAccountChanged() {
+    refetch();
+    auth.refreshOwnedBureaus();
+  }
+
+  if (!isSupabaseConfigured) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-stone-50 dark:bg-stone-950 p-6 transition-colors">
-        <div className="w-full max-w-sm space-y-3 rounded-2xl border-2 border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950 p-5">
-          <p className="text-sm font-bold text-red-700 dark:text-red-400">Erreur de chargement</p>
-
-          <p className="rounded-lg bg-white dark:bg-stone-900 p-3 text-red-500 dark:text-red-400 font-mono text-sm break-words">
-            {error}
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 p-6 dark:bg-slate-950">
+        <div className="max-w-md rounded-2xl border border-error-200 bg-white p-6 text-center dark:border-error-800 dark:bg-slate-900">
+          <AlertCircle className="mx-auto mb-4 h-12 w-12 text-error-500" />
+          <h1 className="text-lg font-bold text-slate-900 dark:text-white">Configuration manquante</h1>
+          <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+            La connexion à la base de données n'est pas configurée. Vérifiez que les variables
+            d'environnement <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs dark:bg-slate-800">VITE_SUPABASE_URL</code> et{' '}
+            <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs dark:bg-slate-800">VITE_SUPABASE_ANON_KEY</code> sont définies.
           </p>
-
-          {(!supabaseEnvStatus.url || !supabaseEnvStatus.anonKey) && (
-            <div className="rounded-lg bg-red-100 dark:bg-red-900 p-3 text-xs text-red-800 dark:text-red-300">
-              <p className="font-semibold">Variable(s) d'environnement manquante(s) :</p>
-              <ul className="mt-1 list-disc pl-4 space-y-0.5">
-                {!supabaseEnvStatus.url && <li className="font-mono">VITE_SUPABASE_URL</li>}
-                {!supabaseEnvStatus.anonKey && <li className="font-mono">VITE_SUPABASE_ANON_KEY</li>}
-              </ul>
-              <p className="mt-2">
-                Sur Vercel : Project Settings → Environment Variables, puis redéployez — un ajout de
-                variable ne s'applique pas au déploiement déjà en ligne.
-              </p>
-            </div>
-          )}
-
-          <button
-            onClick={refreshAll}
-            className="w-full rounded-lg bg-red-600 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-red-700 active:scale-[0.98]"
-          >
-            Réessayer
-          </button>
         </div>
       </div>
     );
   }
 
-  if (!cabin) {
-    return (
-      <FirstRunSetup
-        session={session}
-        checkedAuth={checkedAuth}
-        onSessionChange={setSession}
-        onCreated={refreshAll}
-      />
-    );
-  }
-
-  const availableCount = vendors.filter((v) => v.status === 'available').length;
-  const selectedVendor = vendors.find((v) => v.id === selectedVendorId) ?? null;
-
-  const cabinDistance =
-    userCoords && cabin.latitude != null && cabin.longitude != null
-      ? distanceInMeters(userCoords, { latitude: cabin.latitude, longitude: cabin.longitude })
-      : null;
-
   return (
-    <div className="min-h-screen bg-stone-50 dark:bg-stone-950 transition-colors">
-      <div className="mx-auto max-w-md px-4 py-5 pb-24 space-y-5">
-        <CabinHeader
-          cabin={cabin}
-          onMessageClick={() => setCabinChatOpen(true)}
-          geoLoading={geoLoading}
-          distanceMeters={cabinDistance}
-        />
+    <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-white">
+      <Header onAccountClick={handleAccountClick} isLoggedIn={!!auth.session} />
 
-        {screen === 'home' && (
-          <div key="home" className="space-y-5 tab-fade">
-            <RateBanner cabin={cabin} />
-            <Converter cabin={cabin} />
+      <main className="mx-auto max-w-6xl px-4 pb-24 pt-5 sm:px-6 sm:pb-8">
+        {error && (
+          <div className="mb-4 flex items-center gap-2 rounded-xl bg-error-50 p-3 text-sm text-error-700 dark:bg-error-950/30 dark:text-error-300">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            Erreur de chargement: {error}
           </div>
         )}
 
-        {screen === 'market' && (
-          <div key="market" className="tab-fade">
-            <VendorsSection
-              vendors={vendors}
-              availableCount={availableCount}
-              onSelectVendor={(v) => setSelectedVendorId(v.id)}
-              userCoords={userCoords}
-              geoLoading={geoLoading}
+        {tab === 'accueil' && (
+          <div className="space-y-5 animate-fade-in">
+            {/* Hero */}
+            <div className="rounded-2xl bg-gradient-to-br from-primary-600 to-primary-800 p-5 text-white shadow-lg shadow-primary-500/20">
+              <h2 className="text-xl font-bold sm:text-2xl">Taux de change à Kinshasa</h2>
+              <p className="mt-1 text-sm text-primary-100">
+                Comparez les taux des bureaux de change en temps réel et trouvez le meilleur cours.
+              </p>
+            </div>
+
+            {/* Stats */}
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <StatCard
+                label="Bureaux actifs"
+                value={stats.totalBureaus}
+                sublabel={`${stats.verifiedCount} vérifié${stats.verifiedCount > 1 ? 's' : ''}`}
+                icon={<Building2 className="h-5 w-5" />}
+                accent="primary"
+              />
+              <StatCard
+                label="Taux vente moy."
+                value={stats.avgSell != null ? `${formatCDF(stats.avgSell)}` : '—'}
+                sublabel="FC pour 1 USD"
+                icon={<TrendingUp className="h-5 w-5" />}
+                accent="success"
+              />
+              <StatCard
+                label="Taux achat moy."
+                value={stats.avgBuy != null ? `${formatCDF(stats.avgBuy)}` : '—'}
+                sublabel="FC pour 1 USD"
+                icon={<TrendingDown className="h-5 w-5" />}
+                accent="accent"
+              />
+              <StatCard
+                label="Signaler"
+                value="Contribuer"
+                sublabel="Ajouter un taux"
+                icon={<Megaphone className="h-5 w-5" />}
+                accent="warning"
+              />
+            </div>
+
+            {/* Converter + quick rates */}
+            <div className="grid gap-5 lg:grid-cols-2">
+              <CurrencyConverter bureaus={bureaus} />
+              <div>
+                <div className="mb-3 flex items-center justify-between">
+                  <h2 className="text-sm font-bold text-slate-900 dark:text-white">Derniers taux</h2>
+                  <button
+                    onClick={() => setTab('bureaux')}
+                    className="text-xs font-semibold text-primary-600 dark:text-primary-400"
+                  >
+                    Voir tout →
+                  </button>
+                </div>
+                {bureaus.length === 0 && !loading ? (
+                  <EmptyState
+                    icon={<Building2 className="h-8 w-8" />}
+                    title="Aucun bureau enregistré pour l'instant"
+                    message="Soyez le premier à signaler un bureau de change ou un taux à Kinshasa."
+                    action={
+                      <button
+                        onClick={() => setReportOpen(true)}
+                        className="flex items-center gap-2 rounded-xl bg-primary-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-primary-700"
+                      >
+                        <Megaphone className="h-4 w-4" />
+                        Signaler un taux
+                      </button>
+                    }
+                  />
+                ) : (
+                  <RatesDashboard bureaus={bureaus} loading={loading} onSelectBureau={setSelectedBureau} />
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {tab === 'bureaux' && (
+          <div className="animate-fade-in">
+            <h2 className="mb-4 text-lg font-bold text-slate-900 dark:text-white">Bureaux de change</h2>
+            <RatesDashboard bureaus={bureaus} loading={loading} onSelectBureau={setSelectedBureau} />
+          </div>
+        )}
+
+        {tab === 'carte' && (
+          <div className="animate-fade-in">
+            <h2 className="mb-4 text-lg font-bold text-slate-900 dark:text-white">Carte & annuaire</h2>
+            <BureauDirectory
+              bureaus={bureaus}
+              vendors={allVendors}
+              loading={loading}
+              userCoords={coords}
+              geoStatus={geoStatus}
+              onLocate={requestGeo}
+              onSelectBureau={setSelectedBureau}
             />
           </div>
         )}
+      </main>
 
-        {screen === 'map' && (
-          <div key="map" className="tab-fade">
-            <Suspense
-              fallback={
-                <div className="flex h-[60vh] items-center justify-center rounded-2xl bg-white dark:bg-stone-800 border border-stone-200 dark:border-stone-700">
-                  <Loader2 className="animate-spin text-amber-500" size={28} />
-                </div>
-              }
-            >
-              <MapView
-                cabin={cabin}
-                vendors={vendors}
-                userCoords={userCoords}
-                onSelectVendor={(v) => setSelectedVendorId(v.id)}
-              />
-            </Suspense>
-          </div>
-        )}
+      {/* Floating signaller button (desktop) */}
+      <button
+        onClick={() => setReportOpen(true)}
+        className="fixed bottom-20 right-4 z-20 flex items-center gap-2 rounded-full bg-accent-500 px-4 py-3 text-sm font-bold text-white shadow-lg shadow-accent-500/30 transition hover:bg-accent-600 sm:bottom-6 sm:right-6"
+      >
+        <Megaphone className="h-4 w-4" />
+        <span className="hidden sm:inline">Signaler un taux</span>
+      </button>
 
-        <footer className="pt-2 pb-2 text-center">
-          <p className="text-[11px] text-stone-400 dark:text-stone-600">
-            Les taux sont indicatifs et peuvent changer à tout moment.
-          </p>
-        </footer>
-      </div>
+      <BottomNav active={tab} onChange={handleTabChange} />
 
-      <BottomNav
-        screen={screen}
-        onScreenChange={setScreen}
-        onOpenAdmin={() => setAdminOpen(true)}
-        hasUnread={hasUnread}
+      <CommunityReportModal
+        open={reportOpen}
+        onClose={() => setReportOpen(false)}
+        bureaus={bureaus}
       />
 
-      <AdminModal
-        open={adminOpen}
-        cabin={cabin}
-        vendors={vendors}
-        vendorProducts={vendorProducts}
-        session={session}
-        checkedAuth={checkedAuth}
-        onSessionChange={setSession}
-        onClose={() => setAdminOpen(false)}
-        onRatesUpdated={refreshAll}
-        onVendorsChanged={refreshAll}
-        onMessagesChanged={refreshAll}
-      />
+      <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} />
 
-      {selectedVendor && (
-        <VendorProfileModal
-          vendor={selectedVendor}
-          vendors={vendors}
-          products={vendorProducts.filter((p) => p.vendor_id === selectedVendor.id)}
-          cabin={cabin}
-          userCoords={userCoords}
-          onClose={() => setSelectedVendorId(null)}
-          onSelectVendor={(v) => setSelectedVendorId(v.id)}
+      {auth.session && (
+        <AccountPanel
+          open={accountOpen}
+          onClose={() => setAccountOpen(false)}
+          userId={auth.session.user.id}
+          profile={auth.profile}
+          isAdmin={auth.isAdmin}
+          ownedBureaus={ownedBureaus}
+          onChanged={handleAccountChanged}
         />
       )}
 
-      {cabinChatOpen && (
-        <ClientChatModal cabin={cabin} onClose={() => setCabinChatOpen(false)} />
-      )}
+      <BureauProfile bureau={selectedBureau} onClose={() => setSelectedBureau(null)} />
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <ThemeProvider>
+      <AppContent />
+    </ThemeProvider>
   );
 }
