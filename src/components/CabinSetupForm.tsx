@@ -32,7 +32,7 @@ export function CabinSetupForm({ operatorId, onCreated }: Props) {
       whatsapp: whatsapp.trim() || null,
       buy_rate: parseFloat(buyRate) || 0,
       sell_rate: parseFloat(sellRate) || 0,
-      rates_updated_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
       operator_id: operatorId,
       latitude: latitude.trim() ? parseFloat(latitude) : null,
       longitude: longitude.trim() ? parseFloat(longitude) : null,

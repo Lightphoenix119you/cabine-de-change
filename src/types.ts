@@ -10,7 +10,8 @@ export interface Cabin {
   local_symbol: string;
   buy_rate: number;
   sell_rate: number;
-  rates_updated_at: string;
+  updated_at: string;
+  is_active: boolean;
   operator_id: string | null;
   latitude: number | null;
   longitude: number | null;

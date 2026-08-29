@@ -34,13 +34,24 @@ export function CabinHeader({ cabin, onMessageClick, geoLoading, distanceMeters 
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <span className="relative flex h-2 w-2 shrink-0">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-300 opacity-75" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-green-300" />
-            </span>
-            <span className="text-[11px] font-semibold uppercase tracking-wide text-amber-50">
-              Ouvert
-            </span>
+            {cabin.is_active ? (
+              <>
+                <span className="relative flex h-2 w-2 shrink-0">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-300 opacity-75" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-green-300" />
+                </span>
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-amber-50">
+                  Ouvert
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="h-2 w-2 shrink-0 rounded-full bg-stone-300" />
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-amber-100/70">
+                  Fermé
+                </span>
+              </>
+            )}
           </div>
           <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.2em] text-amber-100/80">
             Singularité
@@ -88,7 +99,7 @@ export function CabinHeader({ cabin, onMessageClick, geoLoading, distanceMeters 
       <div className="mt-4 flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5 text-xs text-amber-50">
           <Clock size={13} />
-          <span>Taux mis à jour {formatTimestamp(cabin.rates_updated_at)}</span>
+          <span>Taux mis à jour {formatTimestamp(cabin.updated_at)}</span>
         </div>
 
         {hasCoords && (

@@ -148,6 +148,7 @@ function RatesForm({
 }) {
   const [buy, setBuy] = useState(String(cabin.buy_rate));
   const [sell, setSell] = useState(String(cabin.sell_rate));
+  const [isActive, setIsActive] = useState(cabin.is_active);
   const [latitude, setLatitude] = useState(cabin.latitude != null ? String(cabin.latitude) : '');
   const [longitude, setLongitude] = useState(cabin.longitude != null ? String(cabin.longitude) : '');
   const [saving, setSaving] = useState(false);
@@ -157,6 +158,7 @@ function RatesForm({
   useEffect(() => {
     setBuy(String(cabin.buy_rate));
     setSell(String(cabin.sell_rate));
+    setIsActive(cabin.is_active);
     setLatitude(cabin.latitude != null ? String(cabin.latitude) : '');
     setLongitude(cabin.longitude != null ? String(cabin.longitude) : '');
   }, [cabin]);
@@ -173,7 +175,8 @@ function RatesForm({
       .update({
         buy_rate: b,
         sell_rate: s,
-        rates_updated_at: new Date().toISOString(),
+        is_active: isActive,
+        updated_at: new Date().toISOString(),
         latitude: latitude.trim() ? parseFloat(latitude) : null,
         longitude: longitude.trim() ? parseFloat(longitude) : null,
       })
@@ -221,6 +224,39 @@ function RatesForm({
             className="w-full rounded-lg border border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-900 px-3 py-2.5 font-semibold text-stone-800 dark:text-stone-100 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 dark:focus:ring-amber-900"
           />
         </label>
+      </div>
+
+      <div className="rounded-xl bg-white dark:bg-stone-800 border border-stone-200 dark:border-stone-700 p-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-stone-700 dark:text-stone-200">Statut de la cabine</p>
+            <p className="text-xs text-stone-400 dark:text-stone-500">
+              Visible par les clients dans l'en-tête de l'app
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setIsActive(true)}
+              className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+                isActive
+                  ? 'bg-green-100 dark:bg-green-950 text-green-700 dark:text-green-400 ring-1 ring-green-300 dark:ring-green-800'
+                  : 'bg-stone-100 dark:bg-stone-700 text-stone-500 dark:text-stone-400'
+              }`}
+            >
+              Ouvert
+            </button>
+            <button
+              onClick={() => setIsActive(false)}
+              className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+                !isActive
+                  ? 'bg-stone-200 dark:bg-stone-600 text-stone-600 dark:text-stone-200 ring-1 ring-stone-400 dark:ring-stone-500'
+                  : 'bg-stone-100 dark:bg-stone-700 text-stone-500 dark:text-stone-400'
+              }`}
+            >
+              Fermé
+            </button>
+          </div>
+        </div>
       </div>
 
       <div className="rounded-xl bg-white dark:bg-stone-800 border border-stone-200 dark:border-stone-700 p-4">
